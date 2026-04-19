@@ -9,12 +9,14 @@ import {
   Volume2,
   AlertTriangle,
   ScanLine,
+  Camera,
 } from 'lucide-react';
 
 const CONFIG = {
   webhook: process.env.NEXT_PUBLIC_GOOGLE_SHEETS_WEBHOOK_URL || '/api/save-pickup',
   autoSubmitSeconds: 2,
   localStorageKey: 'whatnot_pickup_records',
+  idleRefreshMs: 5 * 60 * 1000,
 };
 
 function now() {
@@ -68,7 +70,7 @@ async function postToSheet(url, payload) {
 
   return {
     ok: res.ok,
-    message: data?.message || (res.ok ? 'Saved to Google Sheets.' : 'Failed to save.'),
+    message: data?.message || (res.ok ? 'Saved' : 'Failed'),
   };
 }
 
@@ -180,7 +182,7 @@ function playDuplicateBeep() {
   playTone(440, 330, 0.28, 0.16);
 }
 
-function Scanner({ onScan, locked }) {
+function Scanner({ onScan, locked, pulse }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [cameraError, setCameraError] = useState('');
@@ -214,9 +216,7 @@ function Scanner({ onScan, locked }) {
         try {
           await video.play();
         } catch (err) {
-          if (err?.name !== 'AbortError') {
-            throw err;
-          }
+          if (err?.name !== 'AbortError') throw err;
           return;
         }
 
@@ -274,9 +274,7 @@ function Scanner({ onScan, locked }) {
     return () => {
       cancelled = true;
       if (raf) cancelAnimationFrame(raf);
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
+      if (stream) stream.getTracks().forEach((t) => t.stop());
       const video = videoRef.current;
       if (video) {
         video.pause();
@@ -290,7 +288,7 @@ function Scanner({ onScan, locked }) {
       <div className="relative overflow-hidden rounded-3xl border border-neutral-200 bg-black shadow-xl">
         <video
           ref={videoRef}
-          className="aspect-[4/3] w-full object-cover"
+          className="aspect-[4/3] w-full max-h-[40vh] object-cover"
           muted
           playsInline
           autoPlay
@@ -298,7 +296,11 @@ function Scanner({ onScan, locked }) {
         <canvas ref={canvasRef} className="hidden" />
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-[50%] w-[80%] rounded-2xl border-4 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.3)]" />
+          <div
+            className={`h-[52%] w-[82%] rounded-2xl border-4 ${
+              pulse ? 'border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.7)]' : 'border-white'
+            } shadow-[0_0_0_9999px_rgba(0,0,0,0.28)] transition-all duration-500`}
+          />
         </div>
       </div>
 
@@ -335,6 +337,23 @@ export default function Page() {
   useEffect(() => {
     saveRecords(records);
   }, [records]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshTimer = setInterval(() => {
+      if (status === 'ready' && !manualOpen && !submitting) {
+        window.location.reload();
+      }
+    }, CONFIG.idleRefreshMs);
+
+    return () => clearInterval(refreshTimer);
+  }, [status, manualOpen, submitting]);
 
   function clearTimers() {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -518,39 +537,48 @@ export default function Page() {
     return () => clearTimers();
   }, []);
 
+  const isIdle = status === 'ready';
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4 py-8">
-      <div className="w-full max-w-3xl">
-        <div className="mb-6 flex justify-center">
+    <div className="flex min-h-screen items-center justify-center overflow-hidden bg-[#fffaf5] px-4 py-4 md:py-5">
+      <div className="w-full max-w-2xl">
+        <div className="mb-4 flex justify-center">
           <img
             src="https://farnorthfinds.com/cdn/shop/files/far_north_finds_logo_1024x1024_cropped_a4b64b46-70f5-4470-bd88-895dcd4e9c72.png?v=1748656895&width=3840"
             alt="Far North Finds"
-            className="h-auto w-[260px] md:w-[420px]"
+            className="h-auto w-[220px] md:w-[320px]"
           />
         </div>
 
-        <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-[0_20px_60px_rgba(0,0,0,0.08)] md:p-8">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight md:text-4xl">
-              Scan your pickup QR code
+        <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] md:p-6">
+          <div className="mb-4 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              Scan Your Pickup QR Code
             </h1>
-            <p className="mt-3 text-sm text-neutral-600 md:text-lg">
-              The kiosk will scan automatically and submit your pickup in {CONFIG.autoSubmitSeconds}{' '}
-              seconds.
+            <p className="mt-2 text-sm text-neutral-600 md:text-base">
+              Hold your Whatnot pickup code inside the camera frame.
             </p>
           </div>
 
-          <Scanner
-            onScan={handleScan}
-            locked={
-              status === 'detected' ||
-              status === 'submitting' ||
-              status === 'done' ||
-              status === 'duplicate'
-            }
-          />
+          <div className="relative">
+            <Scanner onScan={handleScan} locked={status !== 'ready'} pulse={isIdle} />
 
-          <div className="mt-5 text-center">
+            {isIdle && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="rounded-2xl bg-black/35 px-6 py-4 text-center text-white backdrop-blur-[1px]">
+                  <div className="flex justify-center">
+                    <Camera className="h-8 w-8" />
+                  </div>
+                  <div className="mt-2 text-lg font-semibold md:text-xl">Ready to Scan</div>
+                  <div className="mt-1 text-sm text-white/90">
+                    Present your QR code to continue
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 text-center">
             {!manualOpen ? (
               <button
                 onClick={() => setManualOpen(true)}
@@ -650,23 +678,26 @@ export default function Page() {
             )}
           </div>
 
-          <div className="mt-6 text-center">
+          <div className="mt-4 text-center">
             {status === 'ready' && (
-              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-5">
+              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-4">
                 <div className="text-sm uppercase tracking-[0.2em] text-amber-700">Ready</div>
                 <div className="mt-2 text-xl font-medium">Waiting for a QR code</div>
+                <div className="mt-2 text-sm text-neutral-600">
+                  Auto-refreshes every 5 minutes while idle
+                </div>
               </div>
             )}
 
             {status === 'detected' && (
-              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-5">
+              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-4">
                 <div className="flex justify-center">
-                  <ScanLine className="h-12 w-12 text-amber-700" />
+                  <ScanLine className="h-10 w-10 text-amber-700" />
                 </div>
                 <div className="mt-2 text-sm uppercase tracking-[0.2em] text-amber-700">
                   {inputMode === 'manual' ? 'Manual code ready' : 'Code detected'}
                 </div>
-                <div className="mt-3 break-all text-xl font-semibold md:text-2xl">{code}</div>
+                <div className="mt-3 break-all text-lg font-semibold md:text-xl">{code}</div>
                 {shipmentId ? (
                   <div className="mt-2 break-all text-sm text-neutral-600 md:text-base">
                     Shipment ID: {shipmentId}
@@ -677,7 +708,7 @@ export default function Page() {
                     Buyer: {buyerName}
                   </div>
                 ) : null}
-                <div className="mt-5 flex justify-center">
+                <div className="mt-4 flex justify-center">
                   <div className="text-6xl font-bold text-amber-700">{countdown}</div>
                 </div>
                 <div className="mt-2 text-base text-neutral-700">
@@ -687,7 +718,7 @@ export default function Page() {
             )}
 
             {status === 'submitting' && (
-              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-5">
+              <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-4">
                 <div className="text-sm uppercase tracking-[0.2em] text-amber-700">
                   Submitting
                 </div>
@@ -706,14 +737,14 @@ export default function Page() {
             )}
 
             {status === 'done' && (
-              <div className="rounded-3xl border border-green-200 bg-green-50 px-6 py-8 md:px-10 md:py-10">
+              <div className="rounded-3xl border border-green-200 bg-green-50 px-6 py-7 md:px-10 md:py-8">
                 <div className="flex justify-center">
-                  <CheckCircle2 className="h-20 w-20 text-green-600 md:h-24 md:w-24" />
+                  <CheckCircle2 className="h-16 w-16 text-green-600 md:h-20 md:w-20" />
                 </div>
                 <div className="mt-4 text-sm font-semibold uppercase tracking-[0.25em] text-green-700">
                   Success
                 </div>
-                <div className="mt-3 text-3xl font-bold text-green-900 md:text-5xl">
+                <div className="mt-3 text-3xl font-bold text-green-900 md:text-4xl">
                   Pickup Complete
                 </div>
                 <div className="mt-4 break-all text-base text-green-800 md:text-lg">{code}</div>
@@ -735,9 +766,9 @@ export default function Page() {
             )}
 
             {status === 'duplicate' && (
-              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
                 <div className="flex justify-center">
-                  <AlertTriangle className="h-16 w-16 text-amber-600" />
+                  <AlertTriangle className="h-14 w-14 text-amber-600" />
                 </div>
                 <div className="mt-3 text-sm uppercase tracking-[0.2em] text-amber-700">
                   Duplicate
@@ -768,7 +799,7 @@ export default function Page() {
             )}
 
             {status === 'error' && (
-              <div className="rounded-3xl border border-red-200 bg-red-50 p-5">
+              <div className="rounded-3xl border border-red-200 bg-red-50 p-4">
                 <div className="text-sm uppercase tracking-[0.2em] text-red-700">Error</div>
                 <div className="mt-2 text-xl font-semibold">We couldn’t submit this pickup</div>
                 <div className="mt-3 break-all text-sm text-red-800 md:text-base">{code}</div>
