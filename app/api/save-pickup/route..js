@@ -1,19 +1,11 @@
 export async function POST(request) {
   try {
     const body = await request.json();
-
     const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-
-    console.log('SAVE PICKUP ROUTE HIT');
-    console.log('GOOGLE_SHEETS_WEBHOOK_URL exists:', Boolean(webhookUrl));
-    console.log('Payload:', body);
 
     if (!webhookUrl) {
       return Response.json(
-        {
-          ok: false,
-          message: 'GOOGLE_SHEETS_WEBHOOK_URL is not configured in Vercel.',
-        },
+        { ok: false, message: 'GOOGLE_SHEETS_WEBHOOK_URL is not configured.' },
         { status: 500 }
       );
     }
@@ -30,9 +22,6 @@ export async function POST(request) {
 
     const text = await googleResponse.text();
 
-    console.log('Google status:', googleResponse.status);
-    console.log('Google response:', text);
-
     let parsed = null;
     try {
       parsed = JSON.parse(text);
@@ -41,15 +30,11 @@ export async function POST(request) {
     return Response.json(
       {
         ok: googleResponse.ok && parsed?.ok !== false,
-        message: parsed?.message || text || 'No response from Google',
-        googleStatus: googleResponse.status,
-        googleResponseText: text,
+        message: parsed?.message || text || 'Saved to Google Sheet',
       },
       { status: googleResponse.ok ? 200 : googleResponse.status }
     );
   } catch (error) {
-    console.error('Route error:', error);
-
     return Response.json(
       {
         ok: false,
