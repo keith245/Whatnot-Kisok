@@ -727,14 +727,14 @@ export default function Page() {
                     type="text"
                     value={manualFirstName}
                     onChange={(e) => setManualFirstName(e.target.value)}
-                    placeholder="First name"
+                    placeholder="User Name"
                     className="h-12 rounded-2xl border border-neutral-300 bg-white px-4 text-base outline-none transition focus:border-neutral-500"
                   />
                   <input
                     type="text"
                     value={manualLastName}
                     onChange={(e) => setManualLastName(e.target.value)}
-                    placeholder="Last name"
+                    placeholder="Last Name"
                     className="h-12 rounded-2xl border border-neutral-300 bg-white px-4 text-base outline-none transition focus:border-neutral-500"
                   />
                 </div>
