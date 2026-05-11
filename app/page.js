@@ -928,9 +928,6 @@ export default function Page() {
               <div className="rounded-3xl border border-[#f3e6d6] bg-[#fffaf5] p-4">
                 <div className="text-sm uppercase tracking-[0.2em] text-amber-700">Ready</div>
                 <div className="mt-2 text-xl font-medium">Waiting for a QR code</div>
-                <div className="mt-2 text-sm text-neutral-600">
-                  Camera refreshes every 5 minutes while idle
-                </div>
               </div>
             )}
 
