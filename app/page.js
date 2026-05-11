@@ -182,23 +182,91 @@ function playDuplicateBeep() {
   playTone(440, 330, 0.28, 0.16);
 }
 
-function Scanner({ onScan, locked, pulse }) {
+function Scanner({ onScan, locked, pulse, restartKey }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const onScanRef = useRef(onScan);
+  const lockedRef = useRef(locked);
+  const restartTimerRef = useRef(null);
   const [cameraError, setCameraError] = useState('');
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
+
+  useEffect(() => {
+    lockedRef.current = locked;
+  }, [locked]);
 
   useEffect(() => {
     let stream = null;
     let raf = null;
+    let watchdog = null;
     let cancelled = false;
+    let starting = false;
     let lastScanAttempt = 0;
     let lastSuccessfulScan = 0;
+    let lastGoodFrame = Date.now();
 
-    async function start() {
+    async function stopCamera() {
+      cancelled = true;
+
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = null;
+      }
+
+      if (watchdog) {
+        clearInterval(watchdog);
+        watchdog = null;
+      }
+
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+
+      try {
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+        }
+      } catch {}
+
+      const video = videoRef.current;
+      if (video) {
+        try {
+          video.pause();
+          video.srcObject = null;
+          video.removeAttribute('src');
+          video.load();
+        } catch {}
+      }
+    }
+
+    async function restartCamera() {
+      if (starting) return;
+
+      await stopCamera();
+
+      restartTimerRef.current = setTimeout(() => {
+        cancelled = false;
+        startCamera();
+      }, 700);
+    }
+
+    async function startCamera() {
+      if (starting) return;
+
+      starting = true;
+
       try {
         const video = videoRef.current;
         const canvas = canvasRef.current;
+
         if (!video || !canvas) return;
+
+        setCameraError('');
 
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -210,11 +278,13 @@ function Scanner({ onScan, locked, pulse }) {
         });
 
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
 
         video.srcObject = stream;
+        video.setAttribute('playsinline', 'true');
+        video.muted = true;
 
         try {
           await video.play();
@@ -223,7 +293,7 @@ function Scanner({ onScan, locked, pulse }) {
           return;
         }
 
-        setCameraError('');
+        lastGoodFrame = Date.now();
 
         const tick = () => {
           if (cancelled) return;
@@ -237,12 +307,21 @@ function Scanner({ onScan, locked, pulse }) {
             return;
           }
 
-          if (
-            !locked &&
-            nowMs - lastScanAttempt >= 250 &&
+          const videoHasFrame =
             videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             videoEl.videoWidth > 0 &&
-            videoEl.videoHeight > 0
+            videoEl.videoHeight > 0 &&
+            !videoEl.paused &&
+            !videoEl.ended;
+
+          if (videoHasFrame) {
+            lastGoodFrame = nowMs;
+          }
+
+          if (
+            !lockedRef.current &&
+            videoHasFrame &&
+            nowMs - lastScanAttempt >= 250
           ) {
             lastScanAttempt = nowMs;
 
@@ -262,7 +341,7 @@ function Scanner({ onScan, locked, pulse }) {
 
               if (result?.data && nowMs - lastSuccessfulScan > 1200) {
                 lastSuccessfulScan = nowMs;
-                onScan(result.data);
+                onScanRef.current(result.data);
               }
             }
           }
@@ -271,27 +350,59 @@ function Scanner({ onScan, locked, pulse }) {
         };
 
         raf = requestAnimationFrame(tick);
+
+        watchdog = setInterval(() => {
+          if (cancelled) return;
+
+          const videoEl = videoRef.current;
+
+          const cameraLooksDead =
+            !videoEl ||
+            videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+            videoEl.paused ||
+            videoEl.ended ||
+            Date.now() - lastGoodFrame > 8000;
+
+          if (cameraLooksDead) {
+            console.warn('Camera watchdog restarting camera.');
+            restartCamera();
+          }
+        }, 10000);
       } catch (err) {
         console.error('Scanner startup failed:', err);
-        setCameraError('Camera access failed. Please allow camera access and refresh.');
+        setCameraError('Camera access failed. Tap the screen or refresh if needed.');
+
+        restartTimerRef.current = setTimeout(() => {
+          cancelled = false;
+          startCamera();
+        }, 3000);
+      } finally {
+        starting = false;
       }
     }
 
-    start();
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        restartCamera();
+      }
+    }
+
+    function handleFocus() {
+      restartCamera();
+    }
+
+    cancelled = false;
+    startCamera();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      cancelled = true;
-      if (raf) cancelAnimationFrame(raf);
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-      }
-      const video = videoRef.current;
-      if (video) {
-        video.pause();
-        video.srcObject = null;
-      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      stopCamera();
     };
-  }, [onScan, locked]);
+  }, [restartKey]);
 
   return (
     <div>
@@ -433,6 +544,7 @@ export default function Page() {
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [inputMode, setInputMode] = useState('scan');
+  const [scannerRestartKey, setScannerRestartKey] = useState(0);
 
   const timerRef = useRef(null);
   const intervalRef = useRef(null);
@@ -456,7 +568,7 @@ export default function Page() {
   useEffect(() => {
     const refreshTimer = setInterval(() => {
       if (status === 'ready' && !manualOpen && !submitting) {
-        window.location.reload();
+        setScannerRestartKey((prev) => prev + 1);
       }
     }, CONFIG.idleRefreshMs);
 
@@ -689,7 +801,12 @@ export default function Page() {
           </div>
 
           <div className="relative">
-            <Scanner onScan={handleScan} locked={status !== 'ready'} pulse={isIdle} />
+            <Scanner
+              onScan={handleScan}
+              locked={status !== 'ready'}
+              pulse={isIdle}
+              restartKey={scannerRestartKey}
+            />
 
             {isIdle && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -812,7 +929,7 @@ export default function Page() {
                 <div className="text-sm uppercase tracking-[0.2em] text-amber-700">Ready</div>
                 <div className="mt-2 text-xl font-medium">Waiting for a QR code</div>
                 <div className="mt-2 text-sm text-neutral-600">
-                  Auto-refreshes every 5 minutes while idle
+                  Camera refreshes every 5 minutes while idle
                 </div>
               </div>
             )}
