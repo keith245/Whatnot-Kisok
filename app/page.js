@@ -793,36 +793,47 @@ export default function Page() {
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] md:p-6">
           <div className="mb-4 text-center">
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              TEST SITE ONLY - DO NOT USE FOR REAL PICKUPS Build V3
+              TEST SITE ONLY - DO NOT USE FOR REAL PICKUPS Build V4
             </h1>
             <p className="mt-2 text-sm text-neutral-600 md:text-base">
               Hold your Whatnot pickup code inside the camera frame.
             </p>
           </div>
 
-          <div className="relative">
-            <Scanner
-              onScan={handleScan}
-              locked={status !== 'ready'}
-              pulse={isIdle}
-              restartKey={scannerRestartKey}
-            />
+<div className="relative">
+  <Scanner
+    onScan={handleScan}
+    locked={status !== 'ready'}
+    pulse={isIdle}
+    restartKey={scannerRestartKey}
+  />
 
-            {isIdle && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="rounded-2xl bg-black/35 px-6 py-4 text-center text-white backdrop-blur-[1px]">
-                  <div className="flex justify-center">
-                    <Camera className="h-8 w-8" />
-                  </div>
-                  <div className="mt-2 text-lg font-semibold md:text-xl">Ready to Scan</div>
-                  <div className="mt-1 text-sm text-white/90">
-                    Present your QR code to continue
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+  {isIdle && (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      <div className="rounded-2xl bg-black/35 px-6 py-4 text-center text-white backdrop-blur-[1px]">
+        <div className="flex justify-center">
+          <Camera className="h-8 w-8" />
+        </div>
+        <div className="mt-2 text-lg font-semibold md:text-xl">Ready to Scan</div>
+        <div className="mt-1 text-sm text-white/90">
+          Present your QR code to continue
+        </div>
+      </div>
+    </div>
+  )}
+</div>
 
+<div className="mt-3 flex justify-center">
+  <button
+    type="button"
+    onClick={() => setScannerRestartKey((prev) => prev + 1)}
+    disabled={submitting}
+    className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    <Camera className="h-4 w-4" />
+    Restart Camera
+  </button>
+</div>
           <div className="mt-4 text-center">
             {!manualOpen ? (
               <button
