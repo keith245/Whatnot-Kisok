@@ -681,7 +681,7 @@ export default function Page() {
         <div className="rounded-3xl border border-neutral-200 bg-white p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] md:p-6">
           <div className="mb-4 text-center">
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-              Scan Your Pickup QR Code
+              TEST SITE ONLY - DO NOT USE FOR REAL PICKUPS
             </h1>
             <p className="mt-2 text-sm text-neutral-600 md:text-base">
               Hold your Whatnot pickup code inside the camera frame.
